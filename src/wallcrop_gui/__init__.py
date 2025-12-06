@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QGraphicsView, QGraphicsScene, 
                              QFileDialog, QToolBar, QLabel, QCheckBox, QWidget, 
@@ -112,6 +113,7 @@ class MainWindow(QMainWindow):
         self.save_action = QAction("Crop & Save", self)
         self.save_action.setShortcut(QKeySequence.StandardKey.Save) # Ctrl+S
         self.save_action.triggered.connect(self.save_crop)
+        self.save_action.setEnabled(False)
         self.addAction(self.save_action)
 
         # Toolbar
@@ -119,6 +121,10 @@ class MainWindow(QMainWindow):
         self.btn_open = QPushButton("Open Image")
         self.btn_open.clicked.connect(self.open_image)
         self.toolbar_layout.addWidget(self.btn_open)
+
+        self.btn_load_monitors = QPushButton("Load Monitors")
+        self.btn_load_monitors.clicked.connect(self.load_monitors_dialog)
+        self.toolbar_layout.addWidget(self.btn_load_monitors)
         
         self.cb_actual_size = QCheckBox("Actual Monitor Sizes (-a)")
         self.cb_actual_size.setEnabled(False)
@@ -148,6 +154,54 @@ class MainWindow(QMainWindow):
         self.overlay_item = None
         self.current_offset = (0, 0)
         self.image_item = None
+        
+        # Load persistent config
+        self.config_dir = Path.home() / ".config" / "wallcrop"
+        self.config_file = self.config_dir / "config.json"
+        self.app_config = self.load_config()
+
+    def load_config(self):
+        if self.config_file.exists():
+            try:
+                with open(self.config_file) as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {}
+
+    def save_config(self):
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.config_file, "w") as f:
+            json.dump(self.app_config, f)
+
+    def load_monitors_dialog(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Load Monitors Config", str(Path.home()), "YAML (*.yml *.yaml)")
+        if path:
+            self.load_monitors_from_path(Path(path), persist=True)
+
+    def load_monitors_from_path(self, path: Path, persist=False):
+        try:
+            self.monitors = core.load_monitors(path)
+            self.cb_actual_size.setEnabled(True)
+            
+            # Check if actual size is feasible
+            try:
+                core.get_monitor_bounds(self.monitors, True)
+                self.cb_actual_size.setChecked(True)
+            except ValueError:
+                self.cb_actual_size.setChecked(False)
+                self.cb_actual_size.setEnabled(False)
+                
+            self.refresh_overlay()
+            self.btn_save.setEnabled(True)
+            self.save_action.setEnabled(True)
+            
+            if persist:
+                self.app_config["default_monitors"] = str(path)
+                self.save_config()
+                
+        except Exception as e:
+            QMessageBox.warning(self, "Warning", f"Could not load monitors.yml: {e}")
 
     def resizeEvent(self, event):
         if self.image_item:
@@ -163,6 +217,10 @@ class MainWindow(QMainWindow):
     def load_image(self, path: Path):
         self.image_path = path
         self.scene.clear()
+        self.overlay_item = None
+        self.monitors = None
+        self.btn_save.setEnabled(False)
+        self.save_action.setEnabled(False)
         
         pixmap = QPixmap(str(path))
         if pixmap.isNull():
@@ -172,27 +230,18 @@ class MainWindow(QMainWindow):
         self.image_item = self.scene.addPixmap(pixmap)
         self.view.fitInView(self.image_item, Qt.AspectRatioMode.KeepAspectRatio)
         
-        # Try loading monitors.yml from same dir
+        # Try loading monitors.yml from same dir, then fallback to config
         monitor_file = path.parent / "monitors.yml"
         if monitor_file.exists():
-            try:
-                self.monitors = core.load_monitors(monitor_file)
-                self.cb_actual_size.setEnabled(True)
-                
-                # Check if actual size is feasible (has keys)
-                try:
-                    core.get_monitor_bounds(self.monitors, True)
-                    self.cb_actual_size.setChecked(True)
-                except ValueError:
-                    self.cb_actual_size.setChecked(False)
-                    self.cb_actual_size.setEnabled(False)
-                    
-                self.refresh_overlay()
-                self.btn_save.setEnabled(True)
-            except Exception as e:
-                QMessageBox.warning(self, "Warning", f"Could not load monitors.yml: {e}")
+            self.load_monitors_from_path(monitor_file)
+        elif "default_monitors" in self.app_config:
+            fallback_path = Path(self.app_config["default_monitors"])
+            if fallback_path.exists():
+                self.load_monitors_from_path(fallback_path)
+            else:
+                QMessageBox.information(self, "Info", "No monitors.yml found in image directory, and default config not found.")
         else:
-            QMessageBox.information(self, "Info", "No monitors.yml found in image directory.")
+            QMessageBox.information(self, "Info", "No monitors.yml found. Please load one manually.")
 
     def refresh_overlay(self):
         if not self.monitors or not self.image_path:
