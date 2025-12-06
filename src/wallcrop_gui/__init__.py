@@ -4,7 +4,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QGraphicsView, QGraphicsScene, 
                              QFileDialog, QToolBar, QLabel, QCheckBox, QWidget, 
                              QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QGraphicsItem, QGraphicsRectItem)
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QBrush
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QBrush, QAction, QKeySequence
 from PyQt6.QtCore import Qt, QRectF, QPointF
 
 # Import core logic from wallcrop
@@ -102,6 +102,17 @@ class MainWindow(QMainWindow):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
+
+        # Shortcuts
+        self.open_action = QAction("Open Image", self)
+        self.open_action.setShortcut(QKeySequence.StandardKey.Open) # Ctrl+O
+        self.open_action.triggered.connect(self.open_image)
+        self.addAction(self.open_action)
+
+        self.save_action = QAction("Crop & Save", self)
+        self.save_action.setShortcut(QKeySequence.StandardKey.Save) # Ctrl+S
+        self.save_action.triggered.connect(self.save_crop)
+        self.addAction(self.save_action)
 
         # Toolbar
         self.toolbar_layout = QHBoxLayout()
