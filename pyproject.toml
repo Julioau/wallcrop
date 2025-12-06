@@ -8,12 +8,13 @@ maintainers = [
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]
-dependencies = ["pillow", "click", "pyYAML", "tqdm"]
+dependencies = ["pillow", "click", "pyYAML", "tqdm", "PyQt6"]
 license = { file = "LICENSE" }
 
 [project.scripts]
 wallcrop = "wallcrop.wallcrop:main"
 wallswitch = "wallcrop.wallswitch:main"
+wallcrop-gui = "wallcrop_gui:main"
 
 [project.urls]
 Github = "https://github.com/themaxw/wallcrop"
@@ -26,6 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["wallcrop*", "wallcrop_gui*"]
 
 
 [tool.setuptools.package-data]
