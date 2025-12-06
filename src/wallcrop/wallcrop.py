@@ -33,6 +33,13 @@ context_settings=dict(help_option_names=["-h", "--help"]),)
     help="Manual offset x,y for the crop origin (e.g. '0,0')"
 )
 @click.option(
+    "--align",
+    type=click.Choice(['none', 'vertical', 'horizontal'], case_sensitive=False),
+    default='none',
+    show_default=True,
+    help="Automatic alignment for x_cm and y_cm when creating monitors.yml"
+)
+@click.option(
     "-n",
     "--no_scale",
     is_flag=True,
@@ -51,7 +58,7 @@ context_settings=dict(help_option_names=["-h", "--help"]),)
     "-f", "--format", type=click.STRING, default="png", help="file format of the cropped images",show_default=True
 )
 @click.argument("input_file", nargs=-1, type=click.Path(exists=True, path_type=Path))
-def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tuple[Path], format: str, actual_monitor_sizes: bool, create_monitors: bool, offset: str):
+def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tuple[Path], format: str, actual_monitor_sizes: bool, create_monitors: bool, offset: str, align: str):
     if create_monitors:
         try:
             result = subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True, check=True)
@@ -68,40 +75,73 @@ def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tupl
             tqdm.write("Error: Could not parse 'hyprctl' output.")
             sys.exit(1)
 
-        monitors = []
+        monitors_data_raw = []
         for m in monitor_data:
             width = m["width"]
             height = m["height"]
             transform = m.get("transform", 0)
 
-            # Handle rotation: odd transform means swap dimensions
-            if transform % 2 != 0:
+            if transform % 2 != 0: # Handle rotation
                 width, height = height, width
 
-            # Calculate physical dimensions (hyprctl reports in mm)
             width_cm = m.get("physicalWidth", 0) / 10
             height_cm = m.get("physicalHeight", 0) / 10
-            
-            # Estimate physical position based on monitor's own PPI
-            # This works well for independent monitors or vertically stacked same-width monitors
-            # but might need manual adjustment for mixed-DPI side-by-side setups.
-            x_cm = m["x"] * (width_cm / width) if width > 0 else 0
-            y_cm = m["y"] * (height_cm / height) if height > 0 else 0
 
-            monitors.append({
+            monitors_data_raw.append({
                 "name": m["name"],
                 "width": width,
                 "height": height,
-                "x": m["x"],
-                "y": m["y"],
+                "x_px": m["x"], # Store original pixel coordinates for alignment calculation
+                "y_px": m["y"],
                 "width_cm": width_cm,
                 "height_cm": height_cm,
-                "x_cm": int(x_cm),
-                "y_cm": int(y_cm)
+                "x_cm": 0.0, # Will be set by alignment logic
+                "y_cm": 0.0  # Will be set by alignment logic
             })
 
+        if align == 'none':
+            monitors_to_dump = monitors_data_raw
+        elif align == 'vertical':
+            # Sort by y_px to stack them from top to bottom
+            monitors_data_raw.sort(key=lambda m_item: m_item["y_px"])
+            
+            total_width_cm = max(m_item["width_cm"] for m_item in monitors_data_raw)
+            current_y_cm = 0.0
+            
+            for m_item in monitors_data_raw:
+                # Vertical stacking
+                m_item["y_cm"] = current_y_cm
+                current_y_cm += m_item["height_cm"]
+                
+                # Horizontal centering
+                m_item["x_cm"] = (total_width_cm - m_item["width_cm"]) / 2
+            monitors_to_dump = monitors_data_raw
+            
+        elif align == 'horizontal':
+            # Sort by x_px to place them from left to right
+            monitors_data_raw.sort(key=lambda m_item: m_item["x_px"])
+            
+            total_height_cm = max(m_item["height_cm"] for m_item in monitors_data_raw)
+            current_x_cm = 0.0
+
+            for m_item in monitors_data_raw:
+                # Horizontal placement
+                m_item["x_cm"] = current_x_cm
+                current_x_cm += m_item["width_cm"]
+                
+                # Vertical centering
+                m_item["y_cm"] = (total_height_cm - m_item["height_cm"]) / 2
+            monitors_to_dump = monitors_data_raw
+
+        # Remove temporary pixel coordinates before dumping
+        for m_item in monitors_to_dump:
+            if "x_px" in m_item:
+                del m_item["x_px"]
+            if "y_px" in m_item:
+                del m_item["y_px"]
+        
         with open(monitor_file, "w") as f:
-            yaml.dump(monitors, f, sort_keys=False)
+            yaml.dump(monitors_to_dump, f, sort_keys=False)
         tqdm.write(f"Successfully created {monitor_file}")
         return
 
