@@ -78,12 +78,26 @@ def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tupl
             if transform % 2 != 0:
                 width, height = height, width
 
+            # Calculate physical dimensions (hyprctl reports in mm)
+            width_cm = m.get("physicalWidth", 0) / 10
+            height_cm = m.get("physicalHeight", 0) / 10
+            
+            # Estimate physical position based on monitor's own PPI
+            # This works well for independent monitors or vertically stacked same-width monitors
+            # but might need manual adjustment for mixed-DPI side-by-side setups.
+            x_cm = m["x"] * (width_cm / width) if width > 0 else 0
+            y_cm = m["y"] * (height_cm / height) if height > 0 else 0
+
             monitors.append({
                 "name": m["name"],
                 "width": width,
                 "height": height,
                 "x": m["x"],
-                "y": m["y"]
+                "y": m["y"],
+                "width_cm": width_cm,
+                "height_cm": height_cm,
+                "x_cm": int(x_cm),
+                "y_cm": int(y_cm)
             })
 
         with open(monitor_file, "w") as f:
