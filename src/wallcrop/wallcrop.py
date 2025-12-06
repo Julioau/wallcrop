@@ -55,7 +55,12 @@ def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tupl
     if create_monitors:
         try:
             result = subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True, check=True)
-            monitor_data = json.loads(result.stdout)
+            output = result.stdout.strip()
+            # Determine start of JSON array
+            json_start = output.find('[')
+            if json_start != -1:
+                output = output[json_start:]
+            monitor_data = json.loads(output)
         except (subprocess.CalledProcessError, FileNotFoundError):
             tqdm.write("Error: Could not run 'hyprctl monitors -j'. Are you using Hyprland?")
             sys.exit(1)
