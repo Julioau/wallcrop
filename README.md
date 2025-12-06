@@ -25,18 +25,44 @@ If you want to use the `actual-monitor-size` (`-a`) option (arranging not by the
 
 In the used coordinate system $x=0$, $y=0$ is the top-left corner, with x increasing to the right, and y increasing down. negative values for these are also fine.
 
-To crop an image use
+### Cropping Images
+
+To crop an image use:
 
 ```bash
 wallcrop -m path/to/your/monitors.yml path/to/your/image.png
 ```
 
-To crop all images in a folder use
+To crop all images in a folder use:
 
 ```bash
 wallcrop -m path/to/your/monitors.yml path/to/your/images/*
 ```
 
+**New: Manual Crop Offset**
+To manually specify the top-left corner of your monitor layout within the image (overriding automatic centering), use the `--offset X,Y` option:
+
+```bash
+wallcrop -m monitors.yml image.png --offset 100,50
+```
+
+### Creating `monitors.yml`
+
+You can now automatically generate a `monitors.yml` file from your Hyprland setup using `hyprctl monitors -j`.
+
+```bash
+wallcrop -c
+```
+
+By default, this will create `monitors.yml` with `x_cm` and `y_cm` set to 0.0. You can use the `--align` option for automatic physical alignment:
+
+```bash
+# For a vertical stack of monitors, centered horizontally:
+wallcrop -c --align vertical
+
+# For a horizontal row of monitors, centered vertically:
+wallcrop -c --align horizontal
+```
 For more options see
 
 ```bash
@@ -47,12 +73,22 @@ wallcrop -h
 
 as a treat, there also is wallswitch for setting the wallpapers following the wallcrop structure. this currently only supports `swww` and `hyprpaper` (using preload`hyprctl hyprpaper` for IPC) as wallpaper daemons and only works if the names of the monitors in the `monitors.yml` correspond to the names of the outputs
 
-## creating the monitors file on Hyprland
+## Wallcrop GUI (Experimental)
 
-There is also an experimental tool for automatically creating a `monitors.yml` from your hyprland config, see
+A graphical user interface for `wallcrop` is now available, allowing for visual cropping and easier management.
+
+To launch the GUI:
 
 ```bash
-wallcrop_create_monitors -h
+wallcrop-gui
 ```
 
-for more info
+**Features:**
+*   **Visual Overlay:** See a real-time overlay of your monitor layout on the selected image.
+*   **Interactive Cropping:** Drag the overlay to precisely position your crop. The current offset is displayed dynamically.
+*   **Scale Simulation:** The overlay adjusts its size to simulate how `wallcrop` scales images that are smaller than your monitor setup.
+*   **Monitor Configuration:** Automatically loads `monitors.yml` from the image's directory or a previously saved default location. You can also manually load a `monitors.yml` file.
+*   **Persistence:** Remembers your last loaded `monitors.yml` for convenience.
+*   **Keyboard Shortcuts:**
+    *   `Ctrl+O`: Open Image
+    *   `Ctrl+S`: Crop & Save
