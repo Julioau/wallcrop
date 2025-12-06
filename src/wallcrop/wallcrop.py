@@ -1,5 +1,7 @@
 import os
 import yaml
+import json
+import subprocess
 from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 from math import ceil
@@ -15,9 +17,20 @@ context_settings=dict(help_option_names=["-h", "--help"]),)
     "-m",
     "--monitors",
     "monitor_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    type=click.Path(dir_okay=False, path_type=Path),
     default="./monitors.yml",
     show_default=True
+)
+@click.option(
+    "-c",
+    "--create-monitors",
+    is_flag=True,
+    help="Create monitors.yml from hyprctl monitors -j"
+)
+@click.option(
+    "--offset",
+    type=str,
+    help="Manual offset x,y for the crop origin (e.g. '0,0')"
 )
 @click.option(
     "-n",
@@ -38,7 +51,45 @@ context_settings=dict(help_option_names=["-h", "--help"]),)
     "-f", "--format", type=click.STRING, default="png", help="file format of the cropped images",show_default=True
 )
 @click.argument("input_file", nargs=-1, type=click.Path(exists=True, path_type=Path))
-def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tuple[Path], format: str, actual_monitor_sizes: bool):
+def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tuple[Path], format: str, actual_monitor_sizes: bool, create_monitors: bool, offset: str):
+    if create_monitors:
+        try:
+            result = subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True, check=True)
+            monitor_data = json.loads(result.stdout)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            tqdm.write("Error: Could not run 'hyprctl monitors -j'. Are you using Hyprland?")
+            sys.exit(1)
+        except json.JSONDecodeError:
+            tqdm.write("Error: Could not parse 'hyprctl' output.")
+            sys.exit(1)
+
+        monitors = []
+        for m in monitor_data:
+            width = m["width"]
+            height = m["height"]
+            transform = m.get("transform", 0)
+
+            # Handle rotation: odd transform means swap dimensions
+            if transform % 2 != 0:
+                width, height = height, width
+
+            monitors.append({
+                "name": m["name"],
+                "width": width,
+                "height": height,
+                "x": m["x"],
+                "y": m["y"]
+            })
+
+        with open(monitor_file, "w") as f:
+            yaml.dump(monitors, f, sort_keys=False)
+        tqdm.write(f"Successfully created {monitor_file}")
+        return
+
+    if not monitor_file.exists():
+        tqdm.write(f"Error: Monitor file '{monitor_file}' not found.")
+        sys.exit(1)
+
     with open(monitor_file) as f:
         monitors = yaml.safe_load(f)
 
@@ -101,9 +152,20 @@ def main(monitor_file: Path, output_path: Path, no_scale: bool, input_file: tupl
 
         width, height = im.size
 
-        # calculate offsets so image is nicely centered
-        offset_x = int(width / 2 - total_width / 2) - min_x
-        offset_y = int(height / 2 - total_height / 2) - min_y
+        # calculate offsets
+        if offset:
+            try:
+                ox, oy = map(int, offset.split(","))
+                offset_x = ox
+                offset_y = oy
+                tqdm.write(f"Using manual offset: {offset_x}, {offset_y}")
+            except ValueError:
+                tqdm.write("Error: Offset must be in format 'x,y'")
+                sys.exit(1)
+        else:
+            # calculate offsets so image is nicely centered
+            offset_x = int(width / 2 - total_width / 2) - min_x
+            offset_y = int(height / 2 - total_height / 2) - min_y
 
         os.makedirs(output_path / image_path.stem, exist_ok=True)
 
